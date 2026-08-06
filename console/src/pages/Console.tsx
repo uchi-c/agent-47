@@ -1,19 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
-import { LogOut, RefreshCw, Search, ShieldAlert, Monitor, ShieldCheck } from 'lucide-react';
+import { LogOut, RefreshCw, Search, ShieldAlert, Monitor, ShieldCheck, CreditCard } from 'lucide-react';
 import { Profile, signOut } from '../services/auth';
+import { openBillingPortal } from '../services/organizations';
 import { fetchCustomers, fetchDevices } from '../services/devices';
-import { Customer, Device, getAgentStatus } from '../types';
+import { Customer, Device, Organization, getAgentStatus } from '../types';
 import DeviceTable from '../components/DeviceTable';
 import DeviceDrawer from '../components/DeviceDrawer';
 
 interface ConsoleProps {
   profile: Profile;
+  organization: Organization;
+  onSignOut: () => void;
 }
 
 type FilterTab = 'ALL' | 'FLAGGED' | 'ONLINE';
 
-export default function Console({ profile }: ConsoleProps) {
+function trialDaysLeft(trialEndsAt: string): number {
+  return Math.max(0, Math.ceil((new Date(trialEndsAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+}
+
+export default function Console({ profile, organization, onSignOut }: ConsoleProps) {
   const [devices, setDevices] = useState<Device[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,27 +72,58 @@ export default function Console({ profile }: ConsoleProps) {
 
   const selectedDevice = devices.find((d) => d.id === selectedId) || null;
 
+  const handleSignOut = () => {
+    signOut();
+    onSignOut();
+  };
+
+  const handleManageBilling = async () => {
+    try {
+      window.location.href = await openBillingPortal();
+    } catch {
+      // Most likely cause: no Stripe customer yet (never subscribed). Not
+      // worth a whole error-state UI for a single link click -- the button
+      // is only shown to ADMINs, who can see the failure in devtools if it
+      // ever actually fires.
+    }
+  };
+
   return (
     <div className="dm-app-bg" style={{ minHeight: '100vh' }}>
       <div style={{ maxWidth: 1180, margin: '0 auto', padding: '2rem 1.5rem 4rem' }}>
         {/* ---- Top bar ---- */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4" style={{ marginBottom: 24 }}>
           <div>
-            <h1 className="dm-h1">Device Leasing Console</h1>
+            <h1 className="dm-h1">DeviceGuard</h1>
             <p style={{ color: 'var(--text-mid)', fontSize: '0.8125rem', marginTop: 4 }}>
-              Signed in as {profile.name} · {profile.role === 'ADMIN' ? 'Admin' : 'Staff'}
+              {organization.name} · Signed in as {profile.name} · {profile.role === 'ADMIN' ? 'Admin' : 'Staff'}
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {profile.role === 'ADMIN' && organization.subscription_status === 'ACTIVE' && (
+              <button onClick={handleManageBilling} className="dm-btn dm-btn-ghost">
+                <CreditCard style={{ width: 14, height: 14 }} />
+                <span>Billing</span>
+              </button>
+            )}
             <button onClick={load} className="dm-btn dm-btn-ghost">
               <RefreshCw className={loading ? 'dm-spin' : ''} style={{ width: 14, height: 14 }} />
               <span>Refresh</span>
             </button>
-            <button onClick={() => signOut()} className="dm-icon-btn" aria-label="Sign out" title="Sign out">
+            <button onClick={handleSignOut} className="dm-icon-btn" aria-label="Sign out" title="Sign out">
               <LogOut style={{ width: 15, height: 15 }} />
             </button>
           </div>
         </div>
+
+        {organization.subscription_status === 'TRIALING' && (
+          <div className="flex items-center gap-3 px-4 py-3 rounded-2xl" style={{ background: 'var(--blue-bg)', border: '1px solid rgba(76,111,255,0.3)', marginBottom: 20 }}>
+            <ShieldCheck style={{ width: 16, height: 16, color: 'var(--blue-400)', flexShrink: 0 }} />
+            <p style={{ fontSize: '0.8125rem', color: 'var(--text-hi)' }}>
+              {trialDaysLeft(organization.trial_ends_at)} day{trialDaysLeft(organization.trial_ends_at) === 1 ? '' : 's'} left in your free trial.
+            </p>
+          </div>
+        )}
 
         {/* ---- KPI row ---- */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4" style={{ marginBottom: 24 }}>
@@ -145,7 +183,6 @@ export default function Console({ profile }: ConsoleProps) {
       {selectedDevice && (
         <DeviceDrawer
           device={selectedDevice}
-          currentUserId={profile.id}
           canManage={canManage}
           isAdmin={isAdmin}
           customers={customers}

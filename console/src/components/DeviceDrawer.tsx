@@ -15,7 +15,6 @@ import {
 
 interface DeviceDrawerProps {
   device: Device;
-  currentUserId: string;
   canManage: boolean;
   isAdmin: boolean;
   customers: Customer[];
@@ -45,7 +44,7 @@ function UsageBar({ label, value, icon: Icon }: { label: string; value: number; 
   );
 }
 
-export default function DeviceDrawer({ device, currentUserId, canManage, isAdmin, customers, onClose, onChanged, onCustomerCreated }: DeviceDrawerProps) {
+export default function DeviceDrawer({ device, canManage, isAdmin, customers, onClose, onChanged, onCustomerCreated }: DeviceDrawerProps) {
   const [locations, setLocations] = useState<LocationHistoryEntry[]>([]);
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
@@ -75,7 +74,7 @@ export default function DeviceDrawer({ device, currentUserId, canManage, isAdmin
       .finally(() => setLoadingHistory(false));
   }, [device.id]);
 
-  const withBusy = async (fn: () => Promise<void>) => {
+  const withBusy = async (fn: () => Promise<unknown>) => {
     setError('');
     setBusy(true);
     try {
@@ -91,7 +90,7 @@ export default function DeviceDrawer({ device, currentUserId, canManage, isAdmin
   const handleFlagConfirm = () => {
     if (!flagging) return;
     withBusy(async () => {
-      await flagDevice(device.id, flagging, recoveryMessage, currentUserId);
+      await flagDevice(device.id, flagging, recoveryMessage);
       setFlagging(null);
     });
   };
@@ -114,12 +113,12 @@ export default function DeviceDrawer({ device, currentUserId, canManage, isAdmin
 
   const runCommand = (command: 'LOCK' | 'UNLOCK' | 'REFRESH') => {
     setPendingCommand(command);
-    withBusy(() => sendCommand(device.computer_code, command)).finally(() => setPendingCommand(null));
+    withBusy(() => sendCommand(device.id, command)).finally(() => setPendingCommand(null));
   };
 
   const runWipe = () => {
     setWipeDialogOpen(false);
-    withBusy(() => sendCommand(device.computer_code, 'WIPE', { confirm: true }));
+    withBusy(() => sendCommand(device.id, 'WIPE', { confirm: true }));
   };
 
   return (
@@ -174,7 +173,7 @@ export default function DeviceDrawer({ device, currentUserId, canManage, isAdmin
 
             {/* ---- Customer ---- */}
             <section style={{ marginBottom: 20 }}>
-              <span className="dm-label flex items-center gap-1.5"><User style={{ width: 11, height: 11 }} /> Leased to</span>
+              <span className="dm-label flex items-center gap-1.5"><User style={{ width: 11, height: 11 }} /> Assigned to (optional)</span>
               <div className="dm-card-inset" style={{ padding: '0.85rem', marginTop: 8 }}>
                 {device.customers ? (
                   <div>
@@ -184,7 +183,9 @@ export default function DeviceDrawer({ device, currentUserId, canManage, isAdmin
                     </div>
                   </div>
                 ) : (
-                  <p style={{ fontSize: '0.8125rem', color: 'var(--text-low)' }}>No customer assigned.</p>
+                  <p style={{ fontSize: '0.8125rem', color: 'var(--text-low)' }}>
+                    Not assigned to anyone — fine for a personally- or business-owned device with no separate holder.
+                  </p>
                 )}
 
                 {canManage && !showAddCustomer && (
@@ -225,7 +226,9 @@ export default function DeviceDrawer({ device, currentUserId, canManage, isAdmin
             {/* ---- Lease status ---- */}
             {canManage && (
               <section style={{ marginBottom: 20 }}>
-                <span className="dm-label">Lease status</span>
+                <span className="dm-label">
+                  Assignment status <span style={{ opacity: 0.6, textTransform: 'none' }}>(only matters if this device is leased or issued to someone)</span>
+                </span>
                 <select
                   className="dm-select"
                   style={{ marginTop: 8 }}

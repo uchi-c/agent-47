@@ -2,6 +2,26 @@ export type LeaseStatus = 'ACTIVE' | 'RETURNED' | 'DEFAULTED';
 export type SecurityStatus = 'NORMAL' | 'FLAGGED_LOST' | 'FLAGGED_STOLEN' | 'RECOVERED';
 export type CommandType = 'LOCK' | 'UNLOCK' | 'WIPE' | 'REFRESH';
 export type CommandStatus = 'PENDING' | 'COMPLETED' | 'FAILED';
+export type SubscriptionStatus = 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED';
+
+export interface Organization {
+  id: string;
+  name: string;
+  plan: 'trial' | 'standard';
+  subscription_status: SubscriptionStatus;
+  trial_ends_at: string;
+  stripe_customer_id: string | null;
+}
+
+// True if the org currently has standing access to the console -- either a
+// paid subscription in good standing, or an unexpired trial. Kept as one
+// function so App.tsx and Console.tsx's trial banner can never disagree
+// about what "still has access" means.
+export function hasAccess(org: Organization): boolean {
+  if (org.subscription_status === 'ACTIVE') return true;
+  if (org.subscription_status === 'TRIALING') return new Date(org.trial_ends_at).getTime() > Date.now();
+  return false;
+}
 
 export interface Customer {
   id: string;

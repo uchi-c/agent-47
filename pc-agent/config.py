@@ -10,11 +10,11 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(dotenv_path=BASE_DIR / ".env")
 
-# Every value below is supposed to be plain ASCII (a URL, a JWT, a UUID, a
-# short code) -- none of them are ever meant to contain accented letters,
-# smart quotes, or other non-ASCII characters. Copy-pasting a long value
-# like the anon key through chat apps or some terminals can silently pick
-# up an invisible character that looks identical on screen but breaks every
+# Every value below is supposed to be plain ASCII (a URL, a secret, a short
+# code) -- none of them are ever meant to contain accented letters, smart
+# quotes, or other non-ASCII characters. Copy-pasting a long value like the
+# agent key through chat apps or some terminals can silently pick up an
+# invisible character that looks identical on screen but breaks every
 # outbound HTTP request with "'ascii' codec can't encode characters...".
 # Stripping anything outside printable ASCII is always safe here; it can
 # only ever remove accidental copy-paste corruption, never a legitimate
@@ -35,9 +35,15 @@ def _clean(raw, name):
     return cleaned
 
 
-SUPABASE_URL = _clean(os.getenv("SUPABASE_URL"), "SUPABASE_URL")
-SUPABASE_ANON_KEY = _clean(os.getenv("SUPABASE_ANON_KEY"), "SUPABASE_ANON_KEY")
-ORGANIZATION_ID = _clean(os.getenv("ORGANIZATION_ID"), "ORGANIZATION_ID")
+# Base URL of api/ (e.g. https://api.yourdomain.com, no trailing slash).
+API_BASE_URL = (_clean(os.getenv("API_BASE_URL"), "API_BASE_URL") or "").rstrip("/")
+
+# Bearer secret identifying which organization this device belongs to --
+# matches one row's organizations.agent_api_key in the database. Replaces
+# the old SUPABASE_ANON_KEY + ORGANIZATION_ID pair: the key alone now tells
+# the server everything it needs, so there's no separate org id to
+# configure here anymore.
+AGENT_SECRET = _clean(os.getenv("AGENT_SECRET"), "AGENT_SECRET")
 
 COMPUTER_CODE = _clean(os.getenv("COMPUTER_CODE", "DEV-01"), "COMPUTER_CODE")
 HEARTBEAT_INTERVAL = int(
@@ -55,24 +61,18 @@ LOCKDOWN_CHECK_INTERVAL = int(
     os.getenv("LOCKDOWN_CHECK_INTERVAL", "20")
 )
 
-AGENT_SECRET = _clean(os.getenv("AGENT_SECRET", ""), "AGENT_SECRET")
-
 CACHE_FILE = BASE_DIR / "session.json"
 LOG_FILE = BASE_DIR / "agent.log"
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "2.0.0"
 
-if not SUPABASE_URL:
+if not API_BASE_URL:
     raise ValueError(
-        "SUPABASE_URL is missing in .env"
+        "API_BASE_URL is missing in .env"
     )
 
-if not SUPABASE_ANON_KEY:
+if not AGENT_SECRET:
     raise ValueError(
-        "SUPABASE_ANON_KEY is missing in .env"
-    )
-
-if not ORGANIZATION_ID:
-    raise ValueError(
-        "ORGANIZATION_ID is missing in .env"
+        "AGENT_SECRET is missing in .env -- get this organization's agent_api_key "
+        "from an admin (or the organizations table) and set it here."
     )

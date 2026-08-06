@@ -3,7 +3,12 @@ import { motion } from 'motion/react';
 import { ShieldCheck, ArrowRight } from 'lucide-react';
 import { signIn } from '../services/auth';
 
-export default function Login() {
+interface LoginProps {
+  onSwitchToSignup: () => void;
+  onSignedIn: () => void;
+}
+
+export default function Login({ onSwitchToSignup, onSignedIn }: LoginProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -15,6 +20,7 @@ export default function Login() {
     setSubmitting(true);
     try {
       await signIn(email.trim(), password);
+      onSignedIn();
     } catch (err: any) {
       setError(err?.message || 'Sign-in failed. Check your email and password.');
     } finally {
@@ -40,8 +46,8 @@ export default function Login() {
             <ShieldCheck style={{ width: 18, height: 18 }} />
           </div>
           <div>
-            <h1 className="dm-h2">Device Leasing Console</h1>
-            <p className="dm-label" style={{ marginTop: 2 }}>Staff sign-in</p>
+            <h1 className="dm-h2">DeviceGuard</h1>
+            <p className="dm-label" style={{ marginTop: 2 }}>Sign in</p>
           </div>
         </div>
 
@@ -81,6 +87,13 @@ export default function Login() {
             {!submitting && <ArrowRight style={{ width: 14, height: 14 }} />}
           </button>
         </form>
+
+        <p style={{ fontSize: '0.78rem', color: 'var(--text-mid)', textAlign: 'center', marginTop: 18 }}>
+          New here?{' '}
+          <button onClick={onSwitchToSignup} className="dm-nums" style={{ background: 'none', border: 'none', color: 'var(--blue-400)', fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+            Start a free 30-day trial
+          </button>
+        </p>
       </motion.div>
     </div>
   );

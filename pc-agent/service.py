@@ -7,12 +7,12 @@ import servicemanager
 from agent import main
 
 
-class DeviceLeasingAgentService(
+class DeviceGuardAgentService(
     win32serviceutil.ServiceFramework
 ):
 
     _svc_name_ = (
-        "DeviceLeasingAgent"
+        "DeviceGuardAgent"
     )
 
     _svc_display_name_ = (
@@ -52,7 +52,7 @@ class DeviceLeasingAgentService(
         self
     ):
         servicemanager.LogInfoMsg(
-            "DeviceLeasingAgent started."
+            "DeviceGuardAgent started."
         )
 
         main()
@@ -60,5 +60,5 @@ class DeviceLeasingAgentService(
 
 if __name__ == "__main__":
     win32serviceutil.HandleCommandLine(
-        DeviceLeasingAgentService
+        DeviceGuardAgentService
     )

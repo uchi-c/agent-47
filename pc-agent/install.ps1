@@ -1,8 +1,8 @@
 <#
-  Device Leasing Agent installer (Windows)
+  DeviceGuard Agent installer (Windows)
   ---------------------------------------------------------------------------
   Installs Python deps, writes .env, and registers the agent as a Windows
-  service (DeviceLeasingAgent). Run from an ELEVATED PowerShell (Run as
+  service (DeviceGuardAgent). Run from an ELEVATED PowerShell (Run as
   Administrator) because service install needs admin rights.
 
   Adapted from uchi-c/dube-man-system's pc-agent/install.ps1 -- the
@@ -11,9 +11,8 @@
   project (see the comments inline), not this feature's own logic.
 
   Examples
-    .\install.ps1 -SupabaseUrl "https://abc.supabase.co" `
-                  -SupabaseAnonKey "eyJ..." `
-                  -OrganizationId "<this tenant's organizations.id>" `
+    .\install.ps1 -ApiBaseUrl "https://api.yourdomain.com" `
+                  -AgentSecret "<this organization's agent_api_key>" `
                   -ComputerCode "DEV-01"
 
     # Just check health of an already-installed agent
@@ -21,20 +20,18 @@
 #>
 [CmdletBinding()]
 param(
-  [string]$SupabaseUrl,
-  [string]$SupabaseAnonKey,
-  [string]$OrganizationId,
+  [string]$ApiBaseUrl,
+  [string]$AgentSecret,
   [string]$ComputerCode = "DEV-01",
   [int]$HeartbeatInterval = 30,
   [int]$LockdownCheckInterval = 20,
-  [string]$AgentSecret,
   [switch]$VerifyOnly
 )
 
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $envPath = Join-Path $here ".env"
-$svcName = "DeviceLeasingAgent"
+$svcName = "DeviceGuardAgent"
 
 function Assert-Admin {
   $id = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -61,15 +58,11 @@ function Get-Python {
   throw "Python 3 not found on PATH. Install Python 3.10+ from https://python.org (not the Microsoft Store) and check 'Add to PATH' during setup, then retry."
 }
 
-function New-Secret {
-  -join ((1..32) | ForEach-Object { '{0:x2}' -f (Get-Random -Maximum 256) })
-}
-
 # ----- Verify-only path -----------------------------------------------------
 if ($VerifyOnly) {
   Write-Host "== Agent health check ==" -ForegroundColor Cyan
   if (Test-Path $envPath) {
-    $keys = @("SUPABASE_URL","SUPABASE_ANON_KEY","ORGANIZATION_ID","COMPUTER_CODE","AGENT_SECRET")
+    $keys = @("API_BASE_URL","AGENT_SECRET","COMPUTER_CODE")
     foreach ($k in $keys) {
       $line = Select-String -Path $envPath -Pattern "^$k=(.*)$"
       $val  = if ($line) { $line.Matches[0].Groups[1].Value } else { "" }
@@ -100,15 +93,11 @@ if ($VerifyOnly) {
 # ----- Install path ---------------------------------------------------------
 Assert-Admin
 
-if ([string]::IsNullOrWhiteSpace($SupabaseUrl) -or [string]::IsNullOrWhiteSpace($SupabaseAnonKey)) {
-  throw "SupabaseUrl and SupabaseAnonKey are required."
-}
-if ([string]::IsNullOrWhiteSpace($OrganizationId)) {
-  throw "OrganizationId is required - this is a shared multi-tenant database, so the agent must be told which lessor it belongs to. Query: select id, name from organizations;"
+if ([string]::IsNullOrWhiteSpace($ApiBaseUrl)) {
+  throw "ApiBaseUrl is required - where api/ is reachable (e.g. https://api.yourdomain.com)."
 }
 if ([string]::IsNullOrWhiteSpace($AgentSecret)) {
-  $AgentSecret = New-Secret
-  Write-Host "Generated a new AGENT_SECRET for this install." -ForegroundColor Yellow
+  throw "AgentSecret is required - this organization's agent_api_key (an admin can find it in the organizations table; there's no console UI for it yet). Unlike a per-device password, this can't be generated locally: it must match what the server already has on file, or every request from this agent will be rejected with 401."
 }
 
 $python = Get-Python
@@ -134,18 +123,16 @@ if (Test-Path $postInstall) {
 
 Write-Host "Writing .env ($ComputerCode)..." -ForegroundColor Cyan
 $envContent = @"
-SUPABASE_URL=$SupabaseUrl
-SUPABASE_ANON_KEY=$SupabaseAnonKey
-ORGANIZATION_ID=$OrganizationId
+API_BASE_URL=$ApiBaseUrl
+AGENT_SECRET=$AgentSecret
 COMPUTER_CODE=$ComputerCode
 HEARTBEAT_INTERVAL=$HeartbeatInterval
 LOCKDOWN_CHECK_INTERVAL=$LockdownCheckInterval
-AGENT_SECRET=$AgentSecret
 "@
 # Windows PowerShell 5.1's "-Encoding UTF8" silently prepends a byte-order
 # mark, which glues an invisible character onto the first key's name
-# (SUPABASE_URL). python-dotenv does not strip it, so the agent fails with
-# "SUPABASE_URL is missing" even though the file visibly has it. Writing via
+# (API_BASE_URL). python-dotenv does not strip it, so the agent fails with
+# "API_BASE_URL is missing" even though the file visibly has it. Writing via
 # .NET's UTF8Encoding with BOM explicitly disabled sidesteps this.
 [System.IO.File]::WriteAllText($envPath, $envContent, (New-Object System.Text.UTF8Encoding($false)))
 
