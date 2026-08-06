@@ -1,0 +1,5 @@
+supabase
+python-dotenv
+psutil
+pywin32
+requests
