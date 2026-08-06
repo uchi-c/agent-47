@@ -87,9 +87,25 @@ pc-agent/
   wipe.py                             -- targeted wipe (NEW)
   watchdog.py                          -- thread supervisor (reused)
   install.ps1                           -- Windows installer (adapted)
+console/
+  src/pages/Console.tsx   -- device list, KPIs, search/filter (NEW)
+  src/components/DeviceDrawer.tsx -- flag lost/stolen, commands, wipe confirm, history (NEW)
+  ...                      -- see console/README.md
 docs/
   CONSENT-AND-LEGAL.md
 ```
+
+## Admin console
+
+`console/` is a lightweight React admin console for flagging devices and
+issuing commands — device list with lease/security status and search/filter,
+a per-device drawer to flag lost/stolen (with a custom recovery message),
+mark recovered, send LOCK/UNLOCK/REFRESH, and a type-the-device-code-to-confirm
+WIPE dialog, plus IP location history and the audit log. See
+**[console/README.md](console/README.md)** for setup (it needs its own
+Supabase Auth user with an ADMIN/STAFF `public.users` row — there's no
+self-serve signup, deliberately, given what this console can do to a
+device).
 
 ## Setup
 
