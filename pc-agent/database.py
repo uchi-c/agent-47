@@ -1,18 +1,19 @@
-from datetime import datetime, timezone
+import requests
 
-from supabase import create_client
-from config import (
-    SUPABASE_URL,
-    SUPABASE_ANON_KEY,
-    ORGANIZATION_ID
-)
+from config import API_BASE_URL, AGENT_SECRET
 
 import logger
 
-supabase = create_client(
-    SUPABASE_URL,
-    SUPABASE_ANON_KEY
-)
+_HEADERS = {
+    "X-Agent-Key": AGENT_SECRET,
+    "Content-Type": "application/json",
+}
+
+_TIMEOUT = 15
+
+
+def _url(path):
+    return f"{API_BASE_URL}{path}"
 
 
 # ==========================
@@ -20,110 +21,56 @@ supabase = create_client(
 # ==========================
 
 def get_computer(computer_code):
-    result = (
-        supabase.table("computers")
-        .select("*")
-        .eq("computer_code", computer_code)
-        .limit(1)
-        .execute()
-    )
-
-    if result.data:
-        return result.data[0]
-
-    return None
+    resp = requests.get(_url(f"/agent/devices/{computer_code}"), headers=_HEADERS, timeout=_TIMEOUT)
+    if resp.status_code == 404:
+        return None
+    resp.raise_for_status()
+    return resp.json()
 
 
 def register_computer(computer_code):
-    computer = get_computer(computer_code)
-
-    if computer:
-        print(
-            f"[INFO] {computer_code} already registered."
-        )
-        return computer
-
-    # organization_id must be set explicitly here: the column's DB-side
-    # default silently falls back to whichever organization was created
-    # first *in the entire system*, not the tenant this agent belongs to
-    # (the anon role has no authenticated session for it to infer from).
-    result = (
-        supabase.table("computers")
-        .insert(
-            {
-                "computer_code": computer_code,
-                "computer_name": computer_code,
-                "organization_id": ORGANIZATION_ID
-            }
-        )
-        .execute()
+    resp = requests.post(
+        _url("/agent/register"),
+        headers=_HEADERS,
+        json={"computer_code": computer_code},
+        timeout=_TIMEOUT,
     )
-
-    return result.data[0]
+    resp.raise_for_status()
+    computer = resp.json()
+    logger.info(f"[INFO] {computer_code} registered (id={computer['id']}).")
+    return computer
 
 
 def update_heartbeat(
     computer_code,
     metrics
 ):
-    return (
-        supabase.table("computers")
-        .update(
-            {
-                "cpu_usage": metrics["cpu"],
-                "ram_usage": metrics["ram"],
-                "disk_usage": metrics["disk"],
-                "hostname": metrics["hostname"],
-                "ip_address": metrics["ip_address"],
-                "last_seen": datetime.now(timezone.utc).isoformat()
-            }
-        )
-        .eq("computer_code", computer_code)
-        .execute()
+    # Location-history dedup (only log a new row when the public IP
+    # actually changed) happens server-side now -- see api/src/routes/
+    # agent.ts's /heartbeat handler -- so the agent just reports raw
+    # metrics and doesn't need to track its own last-known IP.
+    resp = requests.post(
+        _url("/agent/heartbeat"),
+        headers=_HEADERS,
+        json={
+            "computer_code": computer_code,
+            "cpu": metrics["cpu"],
+            "ram": metrics["ram"],
+            "disk": metrics["disk"],
+            "hostname": metrics["hostname"],
+            "ip_address": metrics["ip_address"],
+            "public_ip": metrics.get("public_ip"),
+        },
+        timeout=_TIMEOUT,
     )
+    resp.raise_for_status()
+    return resp.json()
 
 
-# ==========================
-# LOCATION HISTORY
-# ==========================
-
-def log_location_if_changed(computer, public_ip, local_ip):
-    """Appends a device_location_history row only when the public IP has
-    moved since the last recorded one. Without this dedup, a heartbeat every
-    30s would turn the history into an unbounded log of "still here" rows
-    for a device that never leaves one network — the signal that actually
-    matters (the device changed networks) would drown in noise.
-
-    Silently no-ops if the public IP couldn't be resolved (offline / echo
-    services all down) rather than logging a null/empty location.
-    """
-    if not public_ip:
-        return
-
-    try:
-        last = (
-            supabase.table("device_location_history")
-            .select("ip_address")
-            .eq("computer_id", computer["id"])
-            .order("recorded_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-
-        if last.data and last.data[0]["ip_address"] == public_ip:
-            return
-
-        supabase.table("device_location_history").insert(
-            {
-                "computer_id": computer["id"],
-                "computer_code": computer["computer_code"],
-                "ip_address": public_ip,
-                "local_ip_address": local_ip,
-            }
-        ).execute()
-        logger.info(f"[LOCATION] Recorded new public IP {public_ip} for {computer['computer_code']}")
-    except Exception as e:
-        logger.error(f"[LOCATION ERROR] {e}")
+def mark_wiped(computer_code):
+    resp = requests.patch(_url(f"/agent/devices/{computer_code}/wiped"), headers=_HEADERS, timeout=_TIMEOUT)
+    resp.raise_for_status()
+    return resp.json()
 
 
 # ==========================
@@ -133,23 +80,14 @@ def log_location_if_changed(computer, public_ip, local_ip):
 def get_pending_commands(
     computer_code
 ):
-    result = (
-        supabase.table(
-            "computer_commands"
-        )
-        .select("*")
-        .eq(
-            "computer_code",
-            computer_code
-        )
-        .eq(
-            "status",
-            "PENDING"
-        )
-        .execute()
+    resp = requests.get(
+        _url("/agent/commands"),
+        headers=_HEADERS,
+        params={"computer_code": computer_code},
+        timeout=_TIMEOUT,
     )
-
-    return result.data
+    resp.raise_for_status()
+    return resp.json()
 
 
 def complete_command(
@@ -157,23 +95,14 @@ def complete_command(
     result=None,
     failed=False,
 ):
-    update = {
-        "status": "FAILED" if failed else "COMPLETED",
-        "completed_at": datetime.now(timezone.utc).isoformat(),
-    }
-    if result is not None:
-        update["result"] = result
-
-    return (
-        supabase.table(
-            "computer_commands"
-        )
-        .update(
-            update
-        )
-        .eq(
-            "id",
-            command_id
-        )
-        .execute()
+    resp = requests.post(
+        _url(f"/agent/commands/{command_id}/complete"),
+        headers=_HEADERS,
+        json={
+            "status": "FAILED" if failed else "COMPLETED",
+            "result": result,
+        },
+        timeout=_TIMEOUT,
     )
+    resp.raise_for_status()
+    return resp.json()

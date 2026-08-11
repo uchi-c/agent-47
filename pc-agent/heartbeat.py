@@ -7,8 +7,7 @@ from config import (
 
 from database import (
     register_computer,
-    update_heartbeat,
-    log_location_if_changed
+    update_heartbeat
 )
 
 from metrics import (
@@ -22,7 +21,7 @@ def start_heartbeat():
 
     logger.info(f"[HEARTBEAT] Starting {COMPUTER_CODE}")
 
-    computer = register_computer(
+    register_computer(
         COMPUTER_CODE
     )
 
@@ -32,15 +31,12 @@ def start_heartbeat():
                 get_metrics()
             )
 
+            # Location-history dedup (only record a new row when the public
+            # IP actually changed) happens server-side now -- see
+            # api/src/routes/agent.ts's /heartbeat handler.
             update_heartbeat(
                 COMPUTER_CODE,
                 metrics
-            )
-
-            log_location_if_changed(
-                computer,
-                metrics["public_ip"],
-                metrics["ip_address"],
             )
 
             logger.info(

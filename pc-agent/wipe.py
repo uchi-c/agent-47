@@ -19,11 +19,10 @@ A bug here, worst case, deletes the wrong personal files -- bad, but not
 a bricked laptop" bad.
 """
 import shutil
-from datetime import datetime, timezone
 from pathlib import Path
 
 import logger
-from database import get_computer, complete_command, supabase
+from database import get_computer, complete_command, mark_wiped
 
 # Only these top-level folder names, inside a real user profile, are ever
 # touched. Anything not on this list is left alone even if a future payload
@@ -140,9 +139,7 @@ def wipe_device(computer_code, command_id):
     )
 
     try:
-        supabase.table("computers").update(
-            {"wiped_at": datetime.now(timezone.utc).isoformat()}
-        ).eq("computer_code", computer_code).execute()
+        mark_wiped(computer_code)
     except Exception as e:
         logger.error(f"[WIPE] Wipe completed but failed to record wiped_at: {e}")
 

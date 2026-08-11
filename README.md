@@ -1,124 +1,102 @@
-# Device Leasing / Theft-Prevention Agent
+# DeviceGuard
 
-A theft-prevention system for devices **leased or given to customers** —
-laptops/PCs that leave the premises and belong (for the duration of the
-lease) to someone outside the organization. This is a different business
-model from a walk-in café PC: there's no billing-by-the-minute session,
-but there is a customer who currently holds the device, and a real chance
-the device is lost, stolen, or not returned.
+A theft-prevention platform for PCs — for a **personal owner** protecting
+their own laptop, a **business** protecting its own fleet, or a business
+**leasing/issuing devices to customers**. Self-serve signup, a 30-day free
+trial, then a paid subscription (Stripe).
 
-On theft/loss, this gives an operator:
+On theft/loss, it gives you:
 
 - **Persistent lockdown** — once a device is flagged, the agent re-locks
   it on *every* poll (not just once) until staff explicitly mark it
   recovered. See `pc-agent/theft_monitor.py`.
 - **An on-screen recovery message** — a full-screen, always-on-top notice
-  shown on the locked device with custom text staff control (a contact
+  shown on the locked device with custom text you control (a contact
   number, "please return to X", etc). See `pc-agent/overlay.py` +
   `pc-agent/overlay_display.py`.
 - **IP-based location history** — no GPS on Windows, so this is the
   available signal: a timestamped log of the device's public IP as it
-  changes. See `database/migrations/001_leasing_theft_prevention.sql`
-  (`device_location_history`) and `pc-agent/database.py`.
+  changes. See `database/schema.sql` (`device_location_history`).
 - **Remote wipe**, deliberately scoped to a fixed set of personal-data
   folders (Desktop/Documents/Downloads/Pictures/Videos/Music) under real
   user profiles — never the OS or installed applications. See
   `pc-agent/wipe.py` for the full reasoning and safety checks.
 
-## Built on uchi-c/dube-man-system's Uruu Agent
-
-This reuses, rather than reinvents, the parts of dube-man-system's
-café-PC-tracking agent that already solve the hard problems here:
-
-| Reused | From | Notes |
-|---|---|---|
-| `computers` table shape (code/name/ip/hostname/metrics/last_seen) | `database/schema.sql` | Café-specific billing columns (`hourly_rate`, `rate_per_minute`, Available/Occupied/Maintenance status) dropped — they don't apply to a leased device. |
-| `computer_commands` queue + anon-key agent polling pattern | `agent_schema.sql` | Same LOCK/UNLOCK/REFRESH commands; WIPE added in the migration once its safety constraints exist. |
-| Heartbeat / `ip_address` reporting | `pc-agent/heartbeat.py`, `metrics.py` | Extended with a public-IP lookup (`metrics.get_public_ip()`) and dedup'd history logging — LAN IP alone is meaningless once a device leaves the original network. |
-| Session-0-crossing lock pattern | `pc-agent/lockscreen.py` | `lock_pc()` reused unchanged. Refactored to expose `run_in_active_session()` so `overlay.py` can use the same `CreateProcessAsUser` technique to show the recovery message in the logged-in user's session. |
-| Thread supervisor | `pc-agent/watchdog.py` | Reused verbatim. |
-
-New work, specific to leasing/theft-prevention:
-
-- **Customer-to-device linkage** — `computers.customer_id` (nullable FK to
-  a new `customers` table).
-- **Lease/security status fields** — `computers.lease_status` (business
-  lifecycle: ACTIVE/RETURNED/DEFAULTED) kept deliberately **separate**
-  from `computers.security_status` (ACTION_STATUS: NORMAL/FLAGGED_LOST/
-  FLAGGED_STOLEN/RECOVERED — the only field the persistent-lockdown loop
-  reads). See the migration file for why they're split.
-- **`device_location_history`** table — append-only IP/timestamp trail,
-  written only when the public IP actually changes.
-- **`computer_audit_log`** table — trigger-populated (not
-  application-populated) immutable log of every status change and every
-  command issued, specifically so WIPE and lost/stolen flags are
-  accountable. See `docs/CONSENT-AND-LEGAL.md`.
-- **New agent-side handlers**: `theft_monitor.py` (persistent lockdown
-  check every poll, independent of the one-shot command queue),
-  `overlay.py`/`overlay_display.py` (the recovery message window), and
-  `wipe.py` (the conservative, targeted wipe).
-
 ## ⚠ Read before enabling this for real customers
 
-Remote lock/wipe against a device in a **customer's** possession (not
-internal staff) has consumer-protection and consent implications this
-codebase does not resolve on its own — disclosure in the lease agreement,
-a defined data-retention period for location history, and a dispute path,
-at minimum. See **[docs/CONSENT-AND-LEGAL.md](docs/CONSENT-AND-LEGAL.md)**
-before shipping this to a real lessor.
+Locking/wiping your **own** device needs none of this. Locking/wiping a
+device that's leased or issued to **someone else** does — disclosure in
+the agreement, a defined data-retention period for location history, and a
+dispute path, at minimum. See
+**[docs/CONSENT-AND-LEGAL.md](docs/CONSENT-AND-LEGAL.md)** before shipping
+that scenario to a real customer.
 
-## Layout
+## Architecture
 
 ```
-database/
-  schema.sql                                   -- base tables (org/users/customers/computers/commands)
-  migrations/001_leasing_theft_prevention.sql   -- leasing/theft additions (additive; safe to re-run)
-pc-agent/
-  agent.py               -- entrypoint: wires up the watched threads
-  service.py              -- Windows service wrapper
-  config.py                -- env config
-  database.py               -- all Supabase reads/writes
-  heartbeat.py               -- metrics + location-history reporting
-  metrics.py                  -- CPU/RAM/disk + public-IP resolution
-  command_manager.py           -- polls computer_commands (LOCK/UNLOCK/REFRESH/WIPE)
-  theft_monitor.py               -- persistent lockdown poll loop (NEW)
-  lockscreen.py                    -- session-0-crossing lock (reused)
-  overlay.py / overlay_display.py   -- recovery-message overlay (NEW)
-  wipe.py                             -- targeted wipe (NEW)
-  watchdog.py                          -- thread supervisor (reused)
-  install.ps1                           -- Windows installer (adapted)
-docs/
-  CONSENT-AND-LEGAL.md
+console/    React + Vite + TypeScript admin console (signup, device list, flag/command actions)
+api/        Node + Express backend over Postgres — auth, device/customer CRUD, agent-facing
+            endpoints, Stripe billing. See api/README.md.
+database/   database/schema.sql -- run once against a fresh Postgres (targets Neon)
+pc-agent/   Windows Python agent: heartbeat, persistent lockdown, recovery overlay, wipe
+docs/       CONSENT-AND-LEGAL.md
 ```
+
+Plain Postgres (Neon), not Supabase: there's no bundled auth, auto-REST-API,
+or row-level security here, so `api/` is a real backend, not a thin proxy —
+see `api/README.md` for what it does and why. Authorization lives in its
+route handlers (`api/src/middleware/requireAuth.ts`), and the
+`computer_audit_log` tamper-resistance guarantee that used to come from
+Supabase RLS triggers is preserved with plain Postgres triggers instead
+(see the comments in `database/schema.sql`).
+
+### Built on uchi-c/dube-man-system's Uruu Agent
+
+The pc-agent still reuses, rather than reinvents, the parts of
+dube-man-system's café-PC-tracking agent that already solve the hard
+problems here:
+
+| Reused | Notes |
+|---|---|
+| Session-0-crossing lock pattern | `pc-agent/lockscreen.py`'s `lock_pc()` -- reused unchanged, then refactored to expose `run_in_active_session()` so `overlay.py` can use the same `CreateProcessAsUser` technique to show the recovery message in the logged-in user's session. |
+| Heartbeat + remote-command-queue shape | The general "agent polls a commands table, heartbeats its metrics" pattern. Adapted to talk to `api/` instead of Supabase directly — see `pc-agent/database.py`. |
+| Thread supervisor | `pc-agent/watchdog.py` -- reused verbatim. |
+
+New, specific to DeviceGuard: `theft_monitor.py` (persistent lockdown check
+every poll, independent of the one-shot command queue), `overlay.py` /
+`overlay_display.py` (the recovery-message window), `wipe.py` (the
+conservative, targeted wipe), and the whole `api/` backend + self-serve
+`console/`.
 
 ## Setup
 
-1. Run `database/schema.sql` against a fresh Supabase project, then
-   `database/migrations/001_leasing_theft_prevention.sql`. (If layering
-   this onto an existing dube-man-system project instead, the migration
-   file alone is additive and safe to run directly against its live
-   `computers`/`computer_commands` tables.)
-2. On the device to be leased, from an **elevated** PowerShell:
+1. **Database**: create a [Neon](https://neon.tech) project (or point at
+   any Postgres), then `psql "$DATABASE_URL" -f database/schema.sql` once.
+2. **API**: see `api/README.md` — `cp .env.example .env`, fill in
+   `DATABASE_URL` + `JWT_SECRET`, `npm install && npm run dev`.
+3. **Console**: see `console/README.md` — point `VITE_API_URL` at the API,
+   `npm install && npm run dev`, then just sign up from the login screen.
+4. **A device**: from an elevated PowerShell on the machine to protect:
    ```powershell
    cd pc-agent
-   .\install.ps1 -SupabaseUrl "https://<project-ref>.supabase.co" `
-                 -SupabaseAnonKey "<anon-key>" `
-                 -OrganizationId "<organizations.id>" `
+   .\install.ps1 -ApiBaseUrl "https://api.yourdomain.com" `
+                 -AgentSecret "<this organization's agent_api_key>" `
                  -ComputerCode "DEV-01"
    ```
-3. Link the device to a customer and set `lease_status` from your admin
-   tooling (Supabase table editor, or a console — this repo ships the
-   agent + schema, not an admin UI).
+   Find `agent_api_key` in the `organizations` table for now (there's no
+   console UI for it yet — see console/README.md's "what it deliberately
+   doesn't do").
 
 ## Flagging a device lost/stolen
 
-```sql
-update computers
-set security_status = 'FLAGGED_STOLEN',
-    recovery_message = 'This laptop was reported stolen. Please call 555-0100 to arrange its return.',
-    flagged_at = now(),
-    flagged_by = '<staff user id>'
-where computer_code = 'DEV-01';
+Normally from the console (sign in → click a device → Flag lost/stolen),
+or directly against the API:
+
+```bash
+curl -X POST https://api.yourdomain.com/devices/<device-id>/flag \
+  -H "Authorization: Bearer <your session token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"security_status":"FLAGGED_STOLEN","recovery_message":"This laptop was reported stolen. Please call 555-0100 to arrange its return."}'
 ```
 
 Within one `LOCKDOWN_CHECK_INTERVAL` (default 20s), the agent locks the
@@ -127,9 +105,11 @@ subsequent poll, regardless of anyone unlocking it in between, until
 `security_status` is set back to `RECOVERED`.
 
 To wipe (only takes effect if the device is still flagged — see
-`pc-agent/wipe.py`):
+`pc-agent/wipe.py` and `POST /devices/:id/commands` in `api/`):
 
-```sql
-insert into computer_commands (computer_code, command, payload)
-values ('DEV-01', 'WIPE', '{"confirm": true}'::jsonb);
+```bash
+curl -X POST https://api.yourdomain.com/devices/<device-id>/commands \
+  -H "Authorization: Bearer <your session token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"command":"WIPE","payload":{"confirm":true}}'
 ```
