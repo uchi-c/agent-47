@@ -6,6 +6,7 @@ import { devicesRouter } from './routes/devices.js';
 import { customersRouter } from './routes/customers.js';
 import { agentRouter } from './routes/agent.js';
 import { billingRouter } from './routes/billing.js';
+import { organizationsRouter } from './routes/organizations.js';
 
 // Builds and configures the Express app without starting a listener --
 // split out from index.ts so the same app can be run two ways: a normal
@@ -32,6 +33,7 @@ app.use('/devices', devicesRouter);
 app.use('/customers', customersRouter);
 app.use('/agent', agentRouter);
 app.use('/billing', billingRouter);
+app.use('/organizations', organizationsRouter);
 
 // Last-resort handler so an unexpected thrown error becomes a 500 JSON
 // response instead of Express's default HTML error page (which the
