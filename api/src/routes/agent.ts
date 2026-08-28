@@ -10,6 +10,11 @@ const DEVICE_COLUMNS = `id, organization_id, computer_name, computer_code, hostn
   cpu_usage, ram_usage, disk_usage, last_seen, customer_id, lease_status, security_status,
   recovery_message, flagged_at, recovered_at, wiped_at`;
 
+// Keep in sync with console/src/types.ts's PERSONAL_PLAN_DEVICE_LIMIT (the
+// console shows this same number so an org can see it coming before an
+// install actually gets rejected).
+const PERSONAL_PLAN_DEVICE_LIMIT = 3;
+
 async function loadDeviceByCode(organizationId: string, computerCode: string) {
   const result = await pool.query(`select ${DEVICE_COLUMNS} from public.computers where computer_code = $1`, [computerCode]);
   const row = result.rows[0];
@@ -32,6 +37,21 @@ agentRouter.post('/register', async (req, res) => {
   }
   if (existing.row) {
     res.json(existing.row);
+    return;
+  }
+
+  // Only the personal plan caps device count -- this only runs when
+  // actually registering a brand-new device, not on every heartbeat.
+  const orgResult = await pool.query(
+    `select plan, (select count(*)::int from public.computers where organization_id = o.id) as device_count
+     from public.organizations o where o.id = $1`,
+    [req.agentOrganizationId],
+  );
+  const org = orgResult.rows[0];
+  if (org?.plan === 'personal' && org.device_count >= PERSONAL_PLAN_DEVICE_LIMIT) {
+    res.status(402).json({
+      error: `The personal plan is limited to ${PERSONAL_PLAN_DEVICE_LIMIT} devices. Upgrade to the business plan in the console to connect more.`,
+    });
     return;
   }
 

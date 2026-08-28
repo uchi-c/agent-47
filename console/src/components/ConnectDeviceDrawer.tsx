@@ -3,9 +3,12 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Copy, Check, Eye, EyeOff, RefreshCw, ShieldAlert } from 'lucide-react';
 import { API_URL } from '../apiClient';
 import { fetchAgentKey, rotateAgentKey } from '../services/organizations';
+import { Plan, PERSONAL_PLAN_DEVICE_LIMIT } from '../types';
 import ConfirmDialog from './ConfirmDialog';
 
 interface ConnectDeviceDrawerProps {
+  plan: Plan;
+  deviceCount: number;
   onClose: () => void;
 }
 
@@ -18,7 +21,7 @@ function installCommand(apiUrl: string, key: string): string {
   return `$env:DEVICEGUARD_API = "${apiUrl}"; $env:DEVICEGUARD_KEY = "${key}"; irm ${REMOTE_INSTALL_URL} | iex`;
 }
 
-export default function ConnectDeviceDrawer({ onClose }: ConnectDeviceDrawerProps) {
+export default function ConnectDeviceDrawer({ plan, deviceCount, onClose }: ConnectDeviceDrawerProps) {
   const [key, setKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -93,6 +96,23 @@ export default function ConnectDeviceDrawer({ onClose }: ConnectDeviceDrawerProp
                 <X style={{ width: 16, height: 16 }} />
               </button>
             </div>
+
+            {plan === 'personal' && (
+              <div
+                className="flex items-center gap-2 p-2.5 rounded-xl"
+                style={{
+                  marginTop: 16,
+                  fontSize: '0.78rem',
+                  background: deviceCount >= PERSONAL_PLAN_DEVICE_LIMIT ? 'var(--danger-bg)' : 'var(--blue-bg)',
+                  border: `1px solid ${deviceCount >= PERSONAL_PLAN_DEVICE_LIMIT ? 'rgba(255,107,107,0.3)' : 'rgba(76,111,255,0.3)'}`,
+                  color: deviceCount >= PERSONAL_PLAN_DEVICE_LIMIT ? 'var(--danger)' : 'var(--text-hi)',
+                }}
+              >
+                {deviceCount >= PERSONAL_PLAN_DEVICE_LIMIT
+                  ? `You've used all ${PERSONAL_PLAN_DEVICE_LIMIT} devices on the personal plan — this device won't be able to register until you upgrade to Business (Billing) or remove another one.`
+                  : `Personal plan: ${deviceCount} of ${PERSONAL_PLAN_DEVICE_LIMIT} devices used.`}
+              </div>
+            )}
 
             {error && (
               <div className="flex items-center gap-2 p-2.5 rounded-xl" style={{ background: 'var(--danger-bg)', border: '1px solid rgba(255,107,107,0.3)', fontSize: '0.78rem', color: 'var(--danger)', marginTop: 16 }} role="alert">

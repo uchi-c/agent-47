@@ -99,6 +99,7 @@ export default function Console({ profile, organization, onSignOut }: ConsolePro
             <h1 className="dm-h1">DeviceGuard</h1>
             <p style={{ color: 'var(--text-mid)', fontSize: '0.8125rem', marginTop: 4 }}>
               {organization.name} · Signed in as {profile.name} · {profile.role === 'ADMIN' ? 'Admin' : 'Staff'}
+              {organization.plan !== 'trial' && ` · ${organization.plan === 'personal' ? 'Personal' : 'Business'} plan`}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -205,7 +206,9 @@ export default function Console({ profile, organization, onSignOut }: ConsolePro
         />
       )}
 
-      {connectDrawerOpen && <ConnectDeviceDrawer onClose={() => setConnectDrawerOpen(false)} />}
+      {connectDrawerOpen && (
+        <ConnectDeviceDrawer plan={organization.plan} deviceCount={devices.length} onClose={() => setConnectDrawerOpen(false)} />
+      )}
     </div>
   );
 }

@@ -26,7 +26,7 @@ npm run dev             # tsx watch, http://localhost:8080
 | `/devices/*` | bearer JWT | List/flag/recover/command a device; `GET /:id/audit-log` is ADMIN-only. Every query is scoped to the caller's own organization — a device from another org 404s, not 403. |
 | `/customers/*` | bearer JWT | List/create. |
 | `/agent/*` | `X-Agent-Key: <organizations.agent_api_key>` | register/heartbeat/commands for `pc-agent/` — see its README. Not a user JWT; the key alone identifies the organization. |
-| `/billing/*` | bearer JWT (webhook: none, Stripe signature instead) | Checkout/portal sessions + the Stripe webhook that moves `subscription_status` out of `TRIALING`. |
+| `/billing/*` | bearer JWT (webhook: none, Stripe signature instead) | `GET /plans` (real prices for the personal/business picker), checkout/portal sessions, and the Stripe webhook that moves `subscription_status` out of `TRIALING`. |
 
 ## Deploy
 

@@ -8,6 +8,34 @@ import '../types.js';
 
 export const billingRouter = Router();
 
+function priceIdForPlan(plan: 'personal' | 'business'): string | undefined {
+  return plan === 'personal' ? env.stripePriceIdPersonal : env.stripePriceIdBusiness;
+}
+
+// Real prices, read straight from Stripe rather than hardcoded, so the
+// console never shows a number that's drifted from what Stripe actually
+// charges. A plan with no price id configured comes back null -- the
+// console falls back to generic copy for it instead of erroring.
+billingRouter.get('/plans', requireAuth, async (_req, res) => {
+  const plans: Record<'personal' | 'business', { amount: number; currency: string; interval: string } | null> = {
+    personal: null,
+    business: null,
+  };
+
+  if (env.stripeSecretKey) {
+    await Promise.all(
+      (['personal', 'business'] as const).map(async (plan) => {
+        const priceId = priceIdForPlan(plan);
+        if (!priceId) return;
+        const price = await stripe().prices.retrieve(priceId);
+        plans[plan] = { amount: price.unit_amount ?? 0, currency: price.currency, interval: price.recurring?.interval ?? 'month' };
+      }),
+    );
+  }
+
+  res.json(plans);
+});
+
 // Unlike the checkout-session/create-portal-session pair below, this
 // doesn't take requireAuth or an organization_id from the request body at
 // all -- req.user.organizationId comes straight from the caller's verified
@@ -15,8 +43,10 @@ export const billingRouter = Router();
 // Function had to (there, the JWT and the RLS-scoped query were two
 // separate steps; here requireAuth already IS that check).
 billingRouter.post('/checkout-session', requireAuth, async (req, res) => {
-  if (!env.stripePriceId) {
-    res.status(500).json({ error: 'Billing is not configured (STRIPE_PRICE_ID missing)' });
+  const plan: 'personal' | 'business' = req.body?.plan === 'personal' ? 'personal' : 'business';
+  const priceId = priceIdForPlan(plan);
+  if (!priceId) {
+    res.status(500).json({ error: `Billing is not configured for the ${plan} plan (its Stripe price id is missing)` });
     return;
   }
 
@@ -30,13 +60,17 @@ billingRouter.post('/checkout-session', requireAuth, async (req, res) => {
     await pool.query('update public.organizations set stripe_customer_id = $1 where id = $2', [customerId, org.id]);
   }
 
+  // `plan` rides in metadata on both the session and the subscription it
+  // creates -- the webhook below reads it back from the session to decide
+  // which plan to write, since the session event doesn't carry an expanded
+  // price to derive it from otherwise.
   const session = await stripe().checkout.sessions.create({
     mode: 'subscription',
     customer: customerId,
-    line_items: [{ price: env.stripePriceId, quantity: 1 }],
+    line_items: [{ price: priceId, quantity: 1 }],
     client_reference_id: org.id,
-    metadata: { organization_id: org.id },
-    subscription_data: { metadata: { organization_id: org.id } },
+    metadata: { organization_id: org.id, plan },
+    subscription_data: { metadata: { organization_id: org.id, plan } },
     success_url: `${env.appUrl}/?checkout=success`,
     cancel_url: `${env.appUrl}/?checkout=cancelled`,
   });
@@ -94,10 +128,12 @@ billingRouter.post('/webhook', async (req, res) => {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
         const organizationId = session.metadata?.organization_id ?? (session.client_reference_id as string | null);
+        const plan = session.metadata?.plan === 'personal' ? 'personal' : 'business';
         if (organizationId && session.subscription) {
           await pool.query(
-            `update public.organizations set subscription_status = 'ACTIVE', plan = 'standard', stripe_customer_id = $1, stripe_subscription_id = $2 where id = $3`,
+            `update public.organizations set subscription_status = 'ACTIVE', plan = $1, stripe_customer_id = $2, stripe_subscription_id = $3 where id = $4`,
             [
+              plan,
               typeof session.customer === 'string' ? session.customer : session.customer?.id,
               typeof session.subscription === 'string' ? session.subscription : session.subscription.id,
               organizationId,

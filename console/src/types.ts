@@ -3,15 +3,21 @@ export type SecurityStatus = 'NORMAL' | 'FLAGGED_LOST' | 'FLAGGED_STOLEN' | 'REC
 export type CommandType = 'LOCK' | 'UNLOCK' | 'WIPE' | 'REFRESH';
 export type CommandStatus = 'PENDING' | 'COMPLETED' | 'FAILED';
 export type SubscriptionStatus = 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED';
+export type Plan = 'trial' | 'personal' | 'business';
 
 export interface Organization {
   id: string;
   name: string;
-  plan: 'trial' | 'standard';
+  plan: Plan;
   subscription_status: SubscriptionStatus;
   trial_ends_at: string;
   stripe_customer_id: string | null;
 }
+
+// Keep in sync with api/src/routes/agent.ts's PERSONAL_PLAN_DEVICE_LIMIT --
+// shown here so the console can warn before an install fails, not just
+// after.
+export const PERSONAL_PLAN_DEVICE_LIMIT = 3;
 
 // True if the org currently has standing access to the console -- either a
 // paid subscription in good standing, or an unexpired trial. Kept as one
