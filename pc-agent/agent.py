@@ -21,7 +21,7 @@ import logger
 
 def main():
 
-    logger.info("[AGENT] Starting Device Leasing Agent")
+    logger.info("[AGENT] Starting DeviceGuard Agent")
 
     command_manager = CommandManager()
 

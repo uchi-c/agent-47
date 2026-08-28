@@ -16,7 +16,7 @@ class DeviceGuardAgentService(
     )
 
     _svc_display_name_ = (
-        "Device Leasing Agent"
+        "DeviceGuard Agent"
     )
 
     def __init__(
