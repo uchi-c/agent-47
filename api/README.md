@@ -30,7 +30,20 @@ npm run dev             # tsx watch, http://localhost:8080
 
 ## Deploy
 
-Any Node host works (Fly.io, Render, Railway, a VM). Build with `npm run
-build`, run `node dist/index.js`. Point `DATABASE_URL` at Neon, set
-`CONSOLE_ORIGIN` to wherever `console/` is actually hosted, and see the
-root README's Stripe section for the billing-specific secrets.
+Two ways to run this, same `src/app.ts` either way:
+
+- **Any traditional Node host** (Fly.io, Render, Railway, a VM): build with
+  `npm run build`, run `node dist/src/index.js` (a real process, holds the
+  `pg` pool open, listens on `PORT`).
+- **Vercel** (serverless): `api/index.ts` re-exports the same app with no
+  listener, and `vercel.json` rewrites every path to it. Deploy with
+  `rootDirectory` set to this `api/` folder. Works well specifically
+  *because* the recommended Neon connection string is the pooled one (the
+  `-pooler` hostname, PgBouncer-backed) — a plain `pg.Pool` per warm
+  function instance is exactly what that pooler exists to absorb; point a
+  serverless deploy at Neon's *unpooled* connection string and you'll
+  exhaust Postgres's own connection limit under concurrent load instead.
+
+Either way: point `DATABASE_URL` at Neon, set `CONSOLE_ORIGIN` to wherever
+`console/` is actually hosted, and see the root README's Stripe section for
+the billing-specific secrets.
