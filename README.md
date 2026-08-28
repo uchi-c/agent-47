@@ -3,7 +3,15 @@
 A theft-prevention platform for PCs — for a **personal owner** protecting
 their own laptop, a **business** protecting its own fleet, or a business
 **leasing/issuing devices to customers**. Self-serve signup, a 30-day free
-trial, then a paid subscription (Stripe).
+trial, then a paid subscription (Stripe) on one of two plans:
+
+- **Personal** — up to 3 devices, for protecting your own gear.
+- **Business** — unlimited devices, plus customer/lease tracking and staff seats.
+
+Same schema and features either way; `api/src/routes/agent.ts` enforces the
+personal-plan device cap at registration, and `database/schema.sql` /
+`database/migrations/001_personal_plan.sql` carry the `organizations.plan`
+column (`'trial' | 'personal' | 'business'`).
 
 On theft/loss, it gives you:
 

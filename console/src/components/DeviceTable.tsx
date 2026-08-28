@@ -1,20 +1,35 @@
-import { Monitor, User, ChevronRight } from 'lucide-react';
+import { Monitor, User, ChevronRight, Plus } from 'lucide-react';
 import { Device, getAgentStatus } from '../types';
 import { AgentStatusBadge, LeaseStatusBadge, SecurityStatusBadge } from './StatusBadge';
 import { relativeTime } from '../format';
 
 interface DeviceTableProps {
   devices: Device[];
+  totalCount: number;
   onSelect: (device: Device) => void;
+  onConnectDevice?: () => void;
 }
 
-export default function DeviceTable({ devices, onSelect }: DeviceTableProps) {
+export default function DeviceTable({ devices, totalCount, onSelect, onConnectDevice }: DeviceTableProps) {
   if (devices.length === 0) {
+    const noneAtAll = totalCount === 0;
     return (
       <div className="dm-card-inset flex flex-col items-center text-center" style={{ padding: '4rem 1.5rem', borderStyle: 'dashed' }}>
         <Monitor style={{ width: 40, height: 40, marginBottom: 12, color: 'var(--text-low)' }} />
-        <p style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-mid)' }}>No devices match</p>
-        <p style={{ fontSize: '0.75rem', marginTop: 4, color: 'var(--text-low)' }}>Try a different search or filter.</p>
+        <p style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-mid)' }}>
+          {noneAtAll ? 'No devices connected yet' : 'No devices match'}
+        </p>
+        <p style={{ fontSize: '0.75rem', marginTop: 4, color: 'var(--text-low)', maxWidth: 320 }}>
+          {noneAtAll
+            ? "Connect the first one to start protecting it — you don't need to be at the device yourself."
+            : 'Try a different search or filter.'}
+        </p>
+        {noneAtAll && onConnectDevice && (
+          <button onClick={onConnectDevice} className="dm-btn dm-btn-primary" style={{ marginTop: 16 }}>
+            <Plus style={{ width: 14, height: 14 }} />
+            <span>Connect a device</span>
+          </button>
+        )}
       </div>
     );
   }

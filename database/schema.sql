@@ -51,7 +51,10 @@ create table public.organizations (
     -- api/src/middleware/requireActiveSubscription.ts. Only the Stripe
     -- webhook (api/src/routes/billing.ts) writes subscription_status after
     -- the initial signup-time TRIALING.
-    plan text not null default 'trial' check (plan in ('trial', 'standard')),
+    -- 'personal' and 'business' differ only in price and the device cap
+    -- api/src/routes/agent.ts enforces at registration (PERSONAL_PLAN_DEVICE_LIMIT)
+    -- -- same schema, same features either way.
+    plan text not null default 'trial' check (plan in ('trial', 'personal', 'business')),
     subscription_status text not null default 'TRIALING' check (subscription_status in ('TRIALING', 'ACTIVE', 'PAST_DUE', 'CANCELED')),
     trial_ends_at timestamptz not null default (timezone('utc', now()) + interval '30 days'),
     stripe_customer_id text,

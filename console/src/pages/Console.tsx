@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
-import { LogOut, RefreshCw, Search, ShieldAlert, Monitor, ShieldCheck, CreditCard } from 'lucide-react';
+import { LogOut, RefreshCw, Search, ShieldAlert, Monitor, ShieldCheck, CreditCard, Plus } from 'lucide-react';
 import { Profile, signOut } from '../services/auth';
 import { openBillingPortal } from '../services/organizations';
 import { fetchCustomers, fetchDevices } from '../services/devices';
 import { Customer, Device, Organization, getAgentStatus } from '../types';
 import DeviceTable from '../components/DeviceTable';
 import DeviceDrawer from '../components/DeviceDrawer';
+import ConnectDeviceDrawer from '../components/ConnectDeviceDrawer';
 
 interface ConsoleProps {
   profile: Profile;
@@ -27,6 +28,7 @@ export default function Console({ profile, organization, onSignOut }: ConsolePro
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterTab>('ALL');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [connectDrawerOpen, setConnectDrawerOpen] = useState(false);
 
   const canManage = profile.role === 'ADMIN' || profile.role === 'STAFF';
   const isAdmin = profile.role === 'ADMIN';
@@ -97,9 +99,16 @@ export default function Console({ profile, organization, onSignOut }: ConsolePro
             <h1 className="dm-h1">DeviceGuard</h1>
             <p style={{ color: 'var(--text-mid)', fontSize: '0.8125rem', marginTop: 4 }}>
               {organization.name} · Signed in as {profile.name} · {profile.role === 'ADMIN' ? 'Admin' : 'Staff'}
+              {organization.plan !== 'trial' && ` · ${organization.plan === 'personal' ? 'Personal' : 'Business'} plan`}
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {isAdmin && (
+              <button onClick={() => setConnectDrawerOpen(true)} className="dm-btn dm-btn-primary">
+                <Plus style={{ width: 14, height: 14 }} />
+                <span>Connect a device</span>
+              </button>
+            )}
             {profile.role === 'ADMIN' && organization.subscription_status === 'ACTIVE' && (
               <button onClick={handleManageBilling} className="dm-btn dm-btn-ghost">
                 <CreditCard style={{ width: 14, height: 14 }} />
@@ -176,7 +185,12 @@ export default function Console({ profile, organization, onSignOut }: ConsolePro
             {[0, 1, 2].map((i) => <div key={i} className="dm-skeleton" style={{ height: 56 }} />)}
           </div>
         ) : (
-          <DeviceTable devices={filtered} onSelect={(d) => setSelectedId(d.id)} />
+          <DeviceTable
+            devices={filtered}
+            totalCount={devices.length}
+            onSelect={(d) => setSelectedId(d.id)}
+            onConnectDevice={isAdmin ? () => setConnectDrawerOpen(true) : undefined}
+          />
         )}
       </div>
 
@@ -190,6 +204,10 @@ export default function Console({ profile, organization, onSignOut }: ConsolePro
           onChanged={load}
           onCustomerCreated={(c) => setCustomers((prev) => [...prev, c].sort((a, b) => a.name.localeCompare(b.name)))}
         />
+      )}
+
+      {connectDrawerOpen && (
+        <ConnectDeviceDrawer plan={organization.plan} deviceCount={devices.length} onClose={() => setConnectDrawerOpen(false)} />
       )}
     </div>
   );

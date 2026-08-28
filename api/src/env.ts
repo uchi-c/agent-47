@@ -16,7 +16,11 @@ export const env = {
   // than silently doing nothing, but the rest of the API (auth, devices,
   // agent) works fine without Stripe configured.
   stripeSecretKey: process.env.STRIPE_SECRET_KEY,
-  stripePriceId: process.env.STRIPE_PRICE_ID,
+  // Two Stripe Prices, one per plan. STRIPE_PRICE_ID is the old single-plan
+  // name from before the personal/business split -- kept as a fallback for
+  // "business" so an already-configured deploy doesn't go dark.
+  stripePriceIdPersonal: process.env.STRIPE_PRICE_ID_PERSONAL,
+  stripePriceIdBusiness: process.env.STRIPE_PRICE_ID_BUSINESS ?? process.env.STRIPE_PRICE_ID,
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
   appUrl: process.env.APP_URL ?? 'http://localhost:3000',
 };
